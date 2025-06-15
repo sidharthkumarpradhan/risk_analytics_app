@@ -85,11 +85,11 @@ def main():
         # API Key input (properly masked)
         default_key = os.getenv("ALPHAVANTAGE_API_KEY", "ERBZK88O5KLSPYPL")
         api_key = st.text_input(
-            "AlphaVantage API Key", 
+            "Stock API Key", 
             value="",
             type="password",
             placeholder="Enter your API key (optional - default key will be used)",
-            help="Your AlphaVantage API key is masked for security"
+            help="Your API key is masked for security"
         )
         
         # Use default if no key entered

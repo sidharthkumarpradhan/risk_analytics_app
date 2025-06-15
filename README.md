@@ -56,7 +56,7 @@ Deploy instantly on Streamlit Cloud: [Your App URL will appear here after deploy
 ## 📋 Prerequisites
 
 - Python 3.8 or higher
-- AlphaVantage API key (free tier available)
+- Stock API key (free tier available)
 - SQLite database (automatically created)
 
 ## 🚀 Quick Start
@@ -132,7 +132,7 @@ risk-analytics-pro/
 
 ### 1. Fund Selection
 - Choose from pre-configured mutual funds in the sidebar
-- Enter your AlphaVantage API key (or use default)
+- Enter your Stock API key (or use default)
 
 ### 2. Data Fetching
 - Click "Fetch & Analyze" to download 3 years of historical data
