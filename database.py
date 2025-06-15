@@ -4,7 +4,19 @@ import pandas as pd
 from sqlalchemy import create_engine, text
 from datetime import datetime
 import json
+import logging
 from typing import List, Dict, Optional, Any
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('risk_analytics.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 class DatabaseManager:
     def __init__(self):
@@ -12,8 +24,12 @@ class DatabaseManager:
         self.db_path = os.getenv('DATABASE_PATH', 'risk_analytics.db')
         self.database_url = f'sqlite:///{self.db_path}'
         
+        logger.info(f"Initializing DatabaseManager with SQLite database: {self.db_path}")
+        
         self.engine = create_engine(self.database_url)
         self._ensure_tables_exist()
+        
+        logger.info("DatabaseManager initialization completed successfully")
     
     def _ensure_tables_exist(self):
         """Create tables if they don't exist"""
@@ -73,6 +89,7 @@ class DatabaseManager:
         CREATE INDEX IF NOT EXISTS idx_var_analyses_fund_date ON var_analyses(fund_id, analysis_date);
         """
         
+        logger.info("Creating database tables if they don't exist...")
         try:
             with self.engine.connect() as conn:
                 # Split and execute each statement
@@ -81,13 +98,14 @@ class DatabaseManager:
                     if statement.strip():
                         conn.execute(text(statement))
                 conn.commit()
-            print("✅ Database tables created successfully")
+            logger.info("Database tables created successfully")
         except Exception as e:
-            print(f"❌ Error creating tables: {e}")
+            logger.error(f"Error creating tables: {e}")
             raise
 
     def create_or_get_fund(self, symbol: str, name: str, description: str = None) -> int:
         """Create fund or return existing fund ID"""
+        logger.info(f"Creating or retrieving fund: {symbol} - {name}")
         try:
             with self.engine.connect() as conn:
                 # Check if fund exists
@@ -97,9 +115,12 @@ class DatabaseManager:
                 ).fetchone()
                 
                 if result:
-                    return result[0]
+                    fund_id = result[0]
+                    logger.info(f"Found existing fund {symbol} with ID: {fund_id}")
+                    return fund_id
                 
                 # Create new fund
+                logger.info(f"Creating new fund: {symbol}")
                 result = conn.execute(
                     text("""
                         INSERT INTO funds (symbol, name, description) 
@@ -115,15 +136,16 @@ class DatabaseManager:
                     {"symbol": symbol}
                 ).fetchone()[0]
                 
-                print(f"✅ Fund {symbol} created with ID: {fund_id}")
+                logger.info(f"Successfully created fund {symbol} with ID: {fund_id}")
                 return fund_id
                 
         except Exception as e:
-            print(f"❌ Error creating/getting fund: {e}")
+            logger.error(f"Error creating/getting fund {symbol}: {e}")
             raise
 
     def store_fund_prices(self, fund_id: int, prices: List[Dict]) -> None:
         """Store fund price data"""
+        logger.info(f"Storing {len(prices)} price records for fund ID: {fund_id}")
         try:
             df = pd.DataFrame(prices)
             df['fund_id'] = fund_id
@@ -134,10 +156,10 @@ class DatabaseManager:
                 df['date'] = pd.to_datetime(df['date'])
             
             df.to_sql('fund_prices', self.engine, if_exists='append', index=False)
-            print(f"✅ Stored {len(prices)} price records for fund ID: {fund_id}")
+            logger.info(f"Successfully stored {len(prices)} price records for fund ID: {fund_id}")
             
         except Exception as e:
-            print(f"❌ Error storing fund prices: {e}")
+            logger.error(f"Error storing fund prices for fund ID {fund_id}: {e}")
             raise
 
     def store_var_analysis(self, fund_id: int, var_results: Dict) -> int:

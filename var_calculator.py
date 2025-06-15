@@ -2,6 +2,18 @@ import numpy as np
 from scipy import stats
 from typing import List, Dict
 import math
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('risk_analytics.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 class VarCalculator:
     """Advanced VaR calculator with multiple methodologies"""

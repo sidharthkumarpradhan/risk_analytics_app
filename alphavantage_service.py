@@ -3,6 +3,18 @@ import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import time
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('risk_analytics.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 class AlphaVantageService:
     """Service for fetching data from AlphaVantage API"""
@@ -11,8 +23,15 @@ class AlphaVantageService:
         self.api_key = api_key or os.getenv('ALPHAVANTAGE_API_KEY', 'ERBZK88O5KLSPYPL')
         self.base_url = 'https://www.alphavantage.co/query'
         
+        logger.info(f"Initializing AlphaVantage service with API key: {self.api_key[:8]}...")
+        
+        if not self.api_key:
+            logger.warning("No AlphaVantage API key provided - using default key")
+        
     def get_daily_prices(self, symbol: str, output_size: str = 'full') -> List[Dict]:
         """Fetch daily price data from AlphaVantage"""
+        logger.info(f"Fetching daily prices for {symbol} with output_size={output_size}")
+        
         params = {
             'function': 'TIME_SERIES_DAILY',
             'symbol': symbol,
@@ -21,18 +40,22 @@ class AlphaVantageService:
         }
         
         try:
+            logger.debug(f"Making API request to {self.base_url}")
             response = requests.get(self.base_url, params=params, timeout=30)
             response.raise_for_status()
             
             data = response.json()
             
             if 'Error Message' in data:
+                logger.error(f"AlphaVantage API Error for {symbol}: {data['Error Message']}")
                 raise ValueError(f"AlphaVantage API Error: {data['Error Message']}")
             
             if 'Note' in data:
+                logger.warning(f"AlphaVantage API rate limit hit for {symbol}")
                 raise ValueError("AlphaVantage API rate limit reached. Please try again later.")
             
             if 'Time Series (Daily)' not in data:
+                logger.error(f"Invalid response format for {symbol} - no time series data")
                 raise ValueError("Invalid response format or no data available")
             
             time_series = data['Time Series (Daily)']
@@ -50,6 +73,7 @@ class AlphaVantageService:
             
             # Sort by date ascending
             prices.sort(key=lambda x: x['date'])
+            logger.info(f"Successfully fetched {len(prices)} price records for {symbol}")
             return prices
             
         except requests.exceptions.RequestException as e:

@@ -14,10 +14,17 @@ import time
 # Load environment variables
 load_dotenv()
 
+# Initialize centralized logging
+from logging_config import setup_logging, get_logger, log_performance, log_api_call, log_data_operation, log_calculation
+logger = setup_logging()
+app_logger = get_logger('streamlit_app')
+
 # Database and services imports
 from database import DatabaseManager, VarAnalysis
 from alphavantage_service import AlphaVantageService
 from var_calculator import VarCalculator
+
+app_logger.info("Risk Analytics Pro - Streamlit application starting")
 
 # Page configuration
 st.set_page_config(
@@ -107,35 +114,48 @@ def main():
         
         # Fetch and analyze button
         if st.button("Fetch & Analyze", type="primary"):
+            app_logger.info(f"User initiated fetch and analysis for {selected_symbol}")
             with st.spinner("Fetching data and running analysis..."):
                 try:
                     # Fetch data
+                    app_logger.info(f"Fetching price data for {selected_symbol} with API key: {api_key[:8]}...")
                     alphavantage.api_key = api_key
                     prices = alphavantage.get_recent_prices(selected_symbol, days=1095)
                     
                     if len(prices) == 0:
+                        app_logger.warning(f"No price data found for {selected_symbol}")
                         st.error("No price data found for this symbol")
                         return
                     
+                    app_logger.info(f"Retrieved {len(prices)} price records for {selected_symbol}")
+                    
                     # Store in database
+                    app_logger.info(f"Creating/retrieving fund record for {selected_symbol}")
                     fund_id = db_manager.create_or_get_fund(
                         symbol=selected_symbol,
                         name=fund_options[selected_symbol]
                     )
                     
+                    app_logger.info(f"Storing {len(prices)} price records to database")
                     db_manager.store_fund_prices(fund_id, prices)
+                    log_data_operation("INSERT", "fund_prices", len(prices))
                     
                     # Calculate VaR
+                    app_logger.info(f"Starting VaR calculation for {selected_symbol}")
                     close_prices = [p['close'] for p in prices]
                     var_results = VarCalculator.calculate_var(close_prices)
+                    log_calculation("VaR Analysis", len(close_prices), var_results.keys())
                     
                     # Store analysis
+                    app_logger.info(f"Storing VaR analysis results to database")
                     analysis_id = db_manager.store_var_analysis(fund_id, var_results)
                     
+                    app_logger.info(f"Successfully completed analysis for {selected_symbol} - Analysis ID: {analysis_id}")
                     st.success(f"Successfully analyzed {len(prices)} price records for {selected_symbol}")
                     st.rerun()
                     
                 except Exception as e:
+                    app_logger.error(f"Error during fetch and analysis for {selected_symbol}: {str(e)}")
                     st.error(f"Error: {str(e)}")
     
     # Main content tabs
