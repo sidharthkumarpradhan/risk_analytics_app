@@ -433,7 +433,7 @@ def display_overview(fund_analysis, selected_symbol, db_manager):
                     SELECT fp.close 
                     FROM fund_prices fp 
                     JOIN funds f ON fp.fund_id = f.id 
-                    WHERE f.symbol = :param0 
+                    WHERE f.symbol = ? 
                     ORDER BY fp.date DESC 
                     LIMIT 1
                     """
@@ -558,7 +558,7 @@ def display_var_analysis(fund_analysis):
                 f"{float(fund_analysis.get('monte_carlo_cvar_5', 0)) * 100:.2f}%"
             ],
             "CVaR 1%": [
-                "N/A",
+                "N/A", 
                 f"{float(fund_analysis.get('historical_cvar_1', 0)) * 100:.2f}%",
                 f"{float(fund_analysis.get('monte_carlo_cvar_1', 0)) * 100:.2f}%"
             ]

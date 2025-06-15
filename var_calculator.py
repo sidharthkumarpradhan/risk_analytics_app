@@ -53,7 +53,7 @@ class VarCalculator:
         
         # Higher moments for distribution analysis
         skewness = stats.skew(returns_array)
-        kurtosis = stats.kurtosis(returns_array, fisher=False)  # Pearson kurtosis
+        kurtosis = stats.kurtosis(returns_array)  # Fisher kurtosis (excess kurtosis)
         
         # Normality test (D'Agostino and Pearson's test)
         stat, normality_p_value = stats.normaltest(returns_array)
@@ -65,10 +65,10 @@ class VarCalculator:
         sharpe_ratio = (annual_return - risk_free_rate) / annual_std if annual_std != 0 else 0
         
         # 1. Parametric VaR (assumes normal distribution)
-        z_05 = stats.norm.ppf(0.05)  # 5% quantile
-        z_01 = stats.norm.ppf(0.01)  # 1% quantile
-        parametric_var_5 = daily_mean - z_05 * daily_std
-        parametric_var_1 = daily_mean - z_01 * daily_std
+        z_05 = stats.norm.ppf(0.05)  # 5% quantile (-1.645)
+        z_01 = stats.norm.ppf(0.01)  # 1% quantile (-2.326)
+        parametric_var_5 = daily_mean + z_05 * daily_std  # z_05 is negative, so this subtracts
+        parametric_var_1 = daily_mean + z_01 * daily_std  # z_01 is negative, so this subtracts
         
         # 2. Historical VaR (empirical quantiles)
         historical_var_5 = np.percentile(returns_array, 5)
