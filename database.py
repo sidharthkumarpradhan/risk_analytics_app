@@ -330,16 +330,38 @@ class DatabaseManager:
                 prices_count = conn.execute(text("SELECT COUNT(*) FROM fund_prices")).scalar()
                 analyses_count = conn.execute(text("SELECT COUNT(*) FROM var_analyses")).scalar()
                 
+                # Get database file size
+                import os
+                db_size_bytes = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
+                db_size_mb = db_size_bytes / (1024 * 1024)
+                
                 return {
-                    'database_type': 'SQLite',
-                    'database_path': self.db_path,
-                    'funds_count': funds_count,
-                    'prices_count': prices_count,
-                    'analyses_count': analyses_count
+                    'total_funds': funds_count,
+                    'total_prices': prices_count,
+                    'total_analyses': analyses_count,
+                    'db_size_mb': db_size_mb
                 }
         except Exception as e:
             print(f"❌ Error getting database info: {e}")
             return {}
+    
+    def execute_query(self, query: str, params: tuple = None) -> List[Dict]:
+        """Execute a custom SQL query and return results as list of dictionaries"""
+        try:
+            with self.engine.connect() as conn:
+                if params:
+                    result = conn.execute(text(query), params)
+                else:
+                    result = conn.execute(text(query))
+                
+                # Convert result to list of dictionaries
+                columns = result.keys()
+                rows = result.fetchall()
+                return [dict(zip(columns, row)) for row in rows]
+                
+        except Exception as e:
+            print(f"❌ Error executing query: {e}")
+            raise e
 
 class VarAnalysis:
     """Data class for VaR analysis results"""
