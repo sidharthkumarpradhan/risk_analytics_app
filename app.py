@@ -97,54 +97,47 @@ def main():
             api_key = default_key
             st.info("Using default API key")
         
-        # Fund selection
+        # Fund definitions
         fund_options = {
             "FCNTX": "Fidelity Contrafund",
-            "VFIAX": "Vanguard 500 Index",
-            "FXNAX": "Fidelity US Bond Index", 
-            "VTSMX": "Vanguard Total Stock Market",
-            "FSKAX": "Fidelity Total Market Index"
+            "VFIAX": "Vanguard 500 Index Fund",
+            "FXNAX": "Fidelity US Bond Index Fund", 
+            "VTSMX": "Vanguard Total Stock Market Fund",
+            "FSKAX": "Fidelity Total Market Index Fund"
         }
         
-        selected_symbol = st.selectbox(
-            "Select Mutual Fund",
-            options=list(fund_options.keys()),
-            format_func=lambda x: f"{x} - {fund_options[x]}"
-        )
-        
-        # Fetch and analyze button
-        if st.button("Fetch & Analyze", type="primary"):
-            app_logger.info(f"User initiated fetch and analysis for {selected_symbol}")
-            with st.spinner("Fetching data and running analysis..."):
+        # Bulk fetch all funds button
+        if st.button("🚀 Fetch All Funds", type="primary", use_container_width=True):
+            app_logger.info("User initiated bulk fetch for all funds")
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            total_funds = len(fund_options)
+            successful_analyses = 0
+            
+            for i, (symbol, name) in enumerate(fund_options.items()):
                 try:
-                    # Fetch data
-                    app_logger.info(f"Fetching price data for {selected_symbol}")
+                    progress = (i) / total_funds
+                    progress_bar.progress(progress)
+                    status_text.text(f"Analyzing {symbol} - {name}...")
+                    
+                    app_logger.info(f"Fetching data for {symbol}")
                     alphavantage.api_key = api_key
-                    prices = alphavantage.get_recent_prices(selected_symbol, days=1095)
+                    prices = alphavantage.get_recent_prices(symbol, days=1095)
                     
                     if len(prices) == 0:
-                        app_logger.warning(f"No price data found for {selected_symbol}")
-                        st.error("No price data found for this symbol")
-                        return
+                        app_logger.warning(f"No price data found for {symbol}")
+                        continue
                     
-                    app_logger.info(f"Retrieved {len(prices)} price records for {selected_symbol}")
+                    app_logger.info(f"Retrieved {len(prices)} price records for {symbol}")
                     
                     # Store in database
-                    app_logger.info(f"Creating/retrieving fund record for {selected_symbol}")
-                    fund_id = db_manager.create_or_get_fund(
-                        symbol=selected_symbol,
-                        name=fund_options[selected_symbol]
-                    )
-                    
-                    app_logger.info(f"Storing {len(prices)} price records to database")
+                    fund_id = db_manager.create_or_get_fund(symbol, name)
                     db_manager.store_fund_prices(fund_id, prices)
-                    log_data_operation("INSERT", "fund_prices", len(prices))
                     
                     # Calculate VaR
-                    app_logger.info(f"Starting VaR calculation for {selected_symbol}")
                     close_prices = [p['close'] for p in prices]
                     var_results = VarCalculator.calculate_var(close_prices)
-                    log_calculation("VaR Analysis", len(close_prices), var_results.keys())
                     
                     # Convert to camelCase for database storage
                     camelCase_results = {
@@ -171,15 +164,120 @@ def main():
                     }
                     
                     # Store analysis
-                    app_logger.info(f"Storing VaR analysis results to database")
+                    analysis_id = db_manager.store_var_analysis(fund_id, camelCase_results)
+                    app_logger.info(f"Successfully analyzed {symbol} - Analysis ID: {analysis_id}")
+                    successful_analyses += 1
+                    
+                except Exception as e:
+                    app_logger.error(f"Error analyzing {symbol}: {str(e)}")
+                    continue
+            
+            # Update progress to complete
+            progress_bar.progress(1.0)
+            status_text.text(f"✅ Completed! Successfully analyzed {successful_analyses}/{total_funds} funds")
+            
+            if successful_analyses > 0:
+                st.success(f"Successfully analyzed {successful_analyses} funds. Use the dropdown below to view results.")
+                st.rerun()
+            else:
+                st.error("No funds were successfully analyzed. Please check your API key and try again.")
+        
+        st.divider()
+        
+        # Fund selection dropdown for viewing analysis
+        st.markdown("### 📊 View Analysis Results")
+        
+        # Get funds that have been analyzed
+        try:
+            analyzed_funds_query = """
+            SELECT DISTINCT f.symbol, f.name 
+            FROM funds f 
+            JOIN var_analyses v ON f.id = v.fund_id 
+            ORDER BY f.symbol
+            """
+            analyzed_funds = db_manager.execute_query(analyzed_funds_query)
+            
+            if analyzed_funds:
+                fund_choices = {fund['symbol']: fund['name'] for fund in analyzed_funds}
+                selected_symbol = st.selectbox(
+                    "Select Fund to View",
+                    options=list(fund_choices.keys()),
+                    format_func=lambda x: f"{x} - {fund_choices[x]}"
+                )
+            else:
+                st.info("No funds have been analyzed yet. Click 'Fetch All Funds' to begin.")
+                selected_symbol = None
+                
+        except Exception as e:
+            app_logger.error(f"Error retrieving analyzed funds: {e}")
+            st.warning("Unable to retrieve fund list. Using default options.")
+            selected_symbol = st.selectbox(
+                "Select Mutual Fund",
+                options=list(fund_options.keys()),
+                format_func=lambda x: f"{x} - {fund_options[x]}"
+            )
+        
+        # Individual fetch button (for single fund analysis)
+        if selected_symbol and st.button("🔄 Re-analyze Selected Fund", help="Re-fetch and analyze only the selected fund"):
+            app_logger.info(f"User initiated re-analysis for {selected_symbol}")
+            with st.spinner("Re-fetching data and running analysis..."):
+                try:
+                    # Get fund name
+                    fund_name = fund_options.get(selected_symbol, f"{selected_symbol} Fund")
+                    
+                    # Fetch data
+                    app_logger.info(f"Fetching data for {selected_symbol}")
+                    alphavantage.api_key = api_key
+                    prices = alphavantage.get_recent_prices(selected_symbol, days=1095)
+                    
+                    if len(prices) == 0:
+                        app_logger.warning(f"No price data found for {selected_symbol}")
+                        st.error("No price data found for this symbol")
+                        st.stop()
+                    
+                    app_logger.info(f"Retrieved {len(prices)} price records for {selected_symbol}")
+                    
+                    # Store in database
+                    fund_id = db_manager.create_or_get_fund(selected_symbol, fund_name)
+                    db_manager.store_fund_prices(fund_id, prices)
+                    
+                    # Calculate VaR
+                    close_prices = [p['close'] for p in prices]
+                    var_results = VarCalculator.calculate_var(close_prices)
+                    
+                    # Convert to camelCase for database storage
+                    camelCase_results = {
+                        'parametricVar5': var_results['parametric_var_5'],
+                        'parametricVar1': var_results['parametric_var_1'],
+                        'historicalVar5': var_results['historical_var_5'],
+                        'historicalVar1': var_results['historical_var_1'],
+                        'historicalCvar5': var_results['historical_cvar_5'],
+                        'historicalCvar1': var_results['historical_cvar_1'],
+                        'monteCarloVar5': var_results['monte_carlo_var_5'],
+                        'monteCarloVar1': var_results['monte_carlo_var_1'],
+                        'monteCarloCvar5': var_results['monte_carlo_cvar_5'],
+                        'monteCarloCvar1': var_results['monte_carlo_cvar_1'],
+                        'dailyMean': var_results['daily_mean'],
+                        'dailyStd': var_results['daily_std'],
+                        'monthlyMean': var_results['monthly_mean'],
+                        'monthlyStd': var_results['monthly_std'],
+                        'skewness': var_results['skewness'],
+                        'kurtosis': var_results['kurtosis'],
+                        'normalityPValue': var_results['normality_p_value'],
+                        'sharpeRatio': var_results['sharpe_ratio'],
+                        'annualReturn': var_results['annual_return'],
+                        'dataPoints': var_results['data_points']
+                    }
+                    
+                    # Store analysis
                     analysis_id = db_manager.store_var_analysis(fund_id, camelCase_results)
                     
-                    app_logger.info(f"Successfully completed analysis for {selected_symbol} - Analysis ID: {analysis_id}")
-                    st.success(f"Successfully analyzed {len(prices)} price records for {selected_symbol}")
+                    app_logger.info(f"Successfully re-analyzed {selected_symbol} - Analysis ID: {analysis_id}")
+                    st.success(f"Successfully re-analyzed {len(prices)} price records for {selected_symbol}")
                     st.rerun()
                     
                 except Exception as e:
-                    app_logger.error(f"Error during fetch and analysis for {selected_symbol}: {str(e)}")
+                    app_logger.error(f"Error during re-analysis for {selected_symbol}: {str(e)}")
                     st.error(f"Error: {str(e)}")
     
     # Get latest analysis for selected fund
@@ -335,7 +433,7 @@ def display_overview(fund_analysis, selected_symbol, db_manager):
                     SELECT fp.close 
                     FROM fund_prices fp 
                     JOIN funds f ON fp.fund_id = f.id 
-                    WHERE f.symbol = ? 
+                    WHERE f.symbol = :param0 
                     ORDER BY fp.date DESC 
                     LIMIT 1
                     """
@@ -345,11 +443,19 @@ def display_overview(fund_analysis, selected_symbol, db_manager):
                 except Exception as e:
                     app_logger.error(f"Error getting current NAV for {selected_symbol}: {e}")
             
-            st.metric(
-                "Current NAV",
-                f"${current_nav:.2f}",
-                delta=f"{selected_symbol}"
-            )
+            # Show appropriate message if no data
+            if current_nav == 0:
+                st.metric(
+                    "Current NAV",
+                    "No Data",
+                    delta="Run Analysis First"
+                )
+            else:
+                st.metric(
+                    "Current NAV",
+                    f"${current_nav:.2f}",
+                    delta=f"{selected_symbol}"
+                )
         
         with col2:
             daily_vol = float(fund_analysis.get('daily_std', 0)) * 100
