@@ -422,39 +422,38 @@ def display_overview(fund_analysis, selected_symbol, db_manager):
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            # Get latest price data from database
-            fund_returns = db_manager.get_fund_returns(selected_symbol, limit=1)
-            current_nav = fund_returns[0]['price'] if fund_returns and len(fund_returns) > 0 else 0
+            # Get latest price data directly from fund_prices table
+            current_nav = 0
+            try:
+                price_query = """
+                SELECT fp.close 
+                FROM fund_prices fp 
+                JOIN funds f ON fp.fund_id = f.id 
+                WHERE f.symbol = ? 
+                ORDER BY fp.date DESC 
+                LIMIT 1
+                """
+                price_results = db_manager.execute_query(price_query, (selected_symbol,))
+                if price_results and len(price_results) > 0 and price_results[0]['close'] is not None:
+                    current_nav = float(price_results[0]['close'])
+                    app_logger.info(f"Retrieved NAV for {selected_symbol}: ${current_nav:.2f}")
+                else:
+                    app_logger.warning(f"No valid price data found for {selected_symbol}")
+            except Exception as e:
+                app_logger.error(f"Error retrieving NAV for {selected_symbol}: {e}")
             
-            # If no price data from returns, try direct price query
-            if current_nav == 0:
-                try:
-                    price_query = """
-                    SELECT fp.close 
-                    FROM fund_prices fp 
-                    JOIN funds f ON fp.fund_id = f.id 
-                    WHERE f.symbol = ? 
-                    ORDER BY fp.date DESC 
-                    LIMIT 1
-                    """
-                    price_results = db_manager.execute_query(price_query, (selected_symbol,))
-                    if price_results and len(price_results) > 0:
-                        current_nav = price_results[0]['close']
-                except Exception as e:
-                    app_logger.error(f"Error getting current NAV for {selected_symbol}: {e}")
-            
-            # Show appropriate message if no data
-            if current_nav == 0:
-                st.metric(
-                    "Current NAV",
-                    "No Data",
-                    delta="Run Analysis First"
-                )
-            else:
+            # Display NAV metric
+            if current_nav > 0:
                 st.metric(
                     "Current NAV",
                     f"${current_nav:.2f}",
                     delta=f"{selected_symbol}"
+                )
+            else:
+                st.metric(
+                    "Current NAV",
+                    "No Data",
+                    delta="Check price data"
                 )
         
         with col2:

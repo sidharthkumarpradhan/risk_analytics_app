@@ -350,14 +350,29 @@ class DatabaseManager:
         try:
             with self.engine.connect() as conn:
                 if params:
-                    result = conn.execute(text(query), params)
+                    # Convert tuple to dict for SQLAlchemy
+                    if isinstance(params, tuple):
+                        # For parameterized queries with ? placeholders, convert to named params
+                        param_dict = {f'param{i}': val for i, val in enumerate(params)}
+                        # Replace ? with :param0, :param1, etc.
+                        modified_query = query
+                        for i in range(len(params)):
+                            modified_query = modified_query.replace('?', f':param{i}', 1)
+                        result = conn.execute(text(modified_query), param_dict)
+                    else:
+                        result = conn.execute(text(query), params)
                 else:
                     result = conn.execute(text(query))
                 
-                # Convert result to list of dictionaries
-                columns = result.keys()
-                rows = result.fetchall()
-                return [dict(zip(columns, row)) for row in rows]
+                # Handle different query types
+                if query.strip().upper().startswith(('SELECT', 'WITH')):
+                    # SELECT queries return data
+                    columns = result.keys()
+                    rows = result.fetchall()
+                    return [dict(zip(columns, row)) for row in rows]
+                else:
+                    # INSERT/UPDATE/DELETE queries don't return rows
+                    return []
                 
         except Exception as e:
             print(f"❌ Error executing query: {e}")
