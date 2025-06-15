@@ -326,7 +326,25 @@ def display_overview(fund_analysis, selected_symbol, db_manager):
         with col1:
             # Get latest price data from database
             fund_returns = db_manager.get_fund_returns(selected_symbol, limit=1)
-            current_nav = fund_returns[0]['price'] if fund_returns else 0
+            current_nav = fund_returns[0]['price'] if fund_returns and len(fund_returns) > 0 else 0
+            
+            # If no price data from returns, try direct price query
+            if current_nav == 0:
+                try:
+                    price_query = """
+                    SELECT fp.close 
+                    FROM fund_prices fp 
+                    JOIN funds f ON fp.fund_id = f.id 
+                    WHERE f.symbol = ? 
+                    ORDER BY fp.date DESC 
+                    LIMIT 1
+                    """
+                    price_results = db_manager.execute_query(price_query, (selected_symbol,))
+                    if price_results and len(price_results) > 0:
+                        current_nav = price_results[0]['close']
+                except Exception as e:
+                    app_logger.error(f"Error getting current NAV for {selected_symbol}: {e}")
+            
             st.metric(
                 "Current NAV",
                 f"${current_nav:.2f}",
